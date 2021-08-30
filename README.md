@@ -1,2 +1,2 @@
-# SWR_Base
-Star Wars Racer Base Tool
+# Star Wars Racer Base Tool
+A tool for modifying SWRacer
