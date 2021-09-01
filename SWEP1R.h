@@ -27,36 +27,33 @@ public:
     while(true) {
 
       bool load = true;
-      float p = 0;
+      int lastLap = 0;
 
-      int lap = 0;
-      BYTE lapCount = 0;
 
-      while(mem.readValue<float>(Values::LapTotal) != 0) {  }
+      waitForCountdown(); // Blocks until the race coundown starts
 
       while(inRace()) {
 
-        if(load) {
-          BYTE track = mem.readValueFromPointer<BYTE>(Values::TrackPointer, true, Values::Track);
-          lapCount = mem.readValueFromPointer<BYTE>(Values::RaceStuffPointer, true, Values::LapNum);
-          loadLevel(track, lapCount); load = false;
+        if(load) { // Loading info that wont change during the race
+          updateRaceInfo(); // Updates the track and number of laps
+          loadLevel(); // Creates a record and prints race info
+          load = false;
         }
 
-        lap = mem.readValue<int>(Values::CurrentLap, true);
+        updateRaceData(); // Updates lap, timer and comp
 
-        if((lap>=0) && (lap <= lapCount-1)) {
-          printProgress(&p, lap);
-        }
+        printProgress(&lastLap); // Prints progress bars
+
+        waitForTimer(); // Blocks until timer changes
 
       }
-      if(!load) {
-        float lapTime = mem.readValue<float>(Values::Laps[lapCount-1]);
-        float totalTime = mem.readValue<float>(Values::LapTotal);
-        printBar(1, lapTime); std::cout << std::endl << "Total: " << totalTime;
+      if(!load && (CurrentLap>TotalLaps)) { // If race was completed, print final results
+        updateRaceData(true); // Get accurate last lap time and final lap time
+        printFinalLap(); // Print finalised last lap and cumlative timer
       }
 
     }
-    return;
+
 
     // Record::DataPoint2 D = {
     //
@@ -105,9 +102,28 @@ public:
 
   void setRecordState(bool record, bool playback) { Recording = record; PlayBack = playback; }
 
-  bool inRace() { // If RaceStatus is 1 then in race, but it initalises as 1 so also need to check PlayerPosition
-    // PlayerPosition is only ever 0 upon initilisation, and is set when in race
-    return mem.readValue<BYTE>(Values::RaceStatus, true) && mem.readValue<BYTE>(Values::PlayerPosition, true);
+protected:
+  void waitForTimer() { float newTime; // Blocks until timer updates
+    do { newTime = mem.readValue<float>(Values::LapTotal);
+    } while(TotalTimer == newTime && inRace());
+  }
+  void waitForCountdown() { // Blocks until the coundown starts or the race has already begun
+    while(mem.readValueFromPointer<float>(Values::TimerPointer, false, Values::Timer) < 0){}
+  }
+
+  void updateRaceInfo() { // Collects static race data
+    CurrentTrack = mem.readValueFromPointer<BYTE>(Values::TrackPointer, true, Values::Track);
+    TotalLaps = mem.readValueFromPointer<BYTE>(Values::RaceStuffPointer, true, Values::LapNum) - 1;
+  }
+  void updateRaceData(bool raceFinished = false) { // Collects updating race data
+    CurrentLap = mem.readValue<BYTE>(Values::CurrentLap - raceFinished, true); // If race finished, then get last lap time
+    CurrentLapTimer = mem.readValue<float>(Values::Laps[CurrentLap]);
+    TotalTimer = mem.readValue<float>(Values::LapTotal);
+    MaxProgress = mem.readValueFromPointer<float>(Values::RaceInfoPointer, true, Values::MaxProgress);
+  }
+
+  bool inRace() { // Returns true if in race
+    return mem.readValue<BYTE>(Values::RaceStatus, true);
   }
 
 private:
@@ -119,11 +135,16 @@ private:
   bool PlayBack : 1;
   const char* TF[2] = { "False", "True" };
 
+  BYTE CurrentTrack;
+  BYTE CurrentLap, TotalLaps;
+  float CurrentLapTimer, TotalTimer;
+  float MaxProgress;
+
   uintptr_t Pointer;
   uintptr_t LapProgress, PodX, PodY, PodZ;
 
-  void loadLevel(BYTE Track, BYTE LapCount) {
-    rec = Record(Track, LapCount); // Creates a new record
+  void loadLevel() {
+    rec = Record(CurrentTrack, TotalLaps); // Creates a new record
     if(PlayBack) { play = Record(); play.load(); }
     Pointer = mem.readPointer(Values::RaceInfoPointer, true);
       LapProgress = Pointer+Values::LapProgress;
@@ -132,10 +153,12 @@ private:
       PodZ        = Pointer+Values::PodZ;
 
       std::cout << std::endl << "________________________" << std::endl;
-      std::cout << "Track: " << Values::TrackNames[Track] << std::endl;
+      std::cout << "Track: " << Values::TrackNames[CurrentTrack] << std::endl;
       std::cout << "Recording: " << TF[Recording] << std::endl;
       std::cout << "Playback: " << TF[PlayBack] << std::endl;
   }
+
+
 
   void printBar(float progress, float lapTime) {
     std::cout << "\r";
@@ -146,20 +169,34 @@ private:
         if (i <= progress*10) std::cout << "|";
         else std::cout << "-";
     }
-    std::cout << "] " << int(progress * 100.0) << " % " << lapTime << "                     ";
+    std::cout << "] " << int(progress * 100.0) << " % " << lapTime << "         ";
   }
 
-  void printProgress(float* lastProgress, int lap) {
+  void printProgress(int* lastLap) {
+    bool nextLap = (*lastLap!=CurrentLap);
 
-    float progress = mem.readValueFromPointer<float>(Values::RaceInfoPointer, true, Values::MaxProgress);
-    bool lapPassed = (*lastProgress>progress);
-    float pBar = lapPassed? 1 : progress;
+    if((CurrentLap>=0) && (CurrentLap <= TotalLaps)) {
 
-    float lapTime = mem.readValue<float>(Values::Laps[lap-lapPassed]);
+      float pBar, lapTime;
+      if(nextLap){
+        lapTime = mem.readValue<float>(Values::Laps[CurrentLap-1]);
+        pBar = 1;
+      }
+      else {
+        lapTime = CurrentLapTimer;
+        pBar = MaxProgress;
+      }
 
-    printBar(pBar, lapTime);
+      printBar(pBar, lapTime);
 
-    if(lapPassed) { std::cout << std::endl; }
-    *lastProgress = progress;
+      if (nextLap)
+        { *lastLap = CurrentLap; std::cout << std::endl; }
+    }
   }
+
+  void printFinalLap() {
+    printBar(1, CurrentLapTimer);
+    std::cout << std::endl << "Total: " << TotalTimer;
+  }
+
 };
