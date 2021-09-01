@@ -1,6 +1,9 @@
 
 #include <iostream>
+
 #include <fstream>
+#include <dirent.h>
+
 #include <list>
 
 using BYTE = unsigned char;
@@ -10,6 +13,7 @@ namespace Values
 {
   // Offset Addresses
     uintptr_t RaceStatus = 0x000EB1E0; // Byte
+    uintptr_t PlayerPosition = 0x00A29C1C; // Byte
 
     uintptr_t Paused = 0x0010C5F0; // Byte
     uintptr_t RaceMenuIndex = 0x0010C078; // Byte
@@ -24,6 +28,11 @@ namespace Values
       uintptr_t PodY = 0x00000054; // Float
       uintptr_t PodZ = 0x00000058; // Float
       uintptr_t OOB = 0x000002C8; // Float
+
+
+    uintptr_t CurrentLap = 0x00A29C38; // Byte
+    uintptr_t RaceStuffPointer = 0x000BFDB8; // Pointer
+      uintptr_t LapNum = 0x0000008F; // Byte
 
 
 //13C IS POINTER
@@ -56,7 +65,8 @@ namespace Values
     uintptr_t Lap4 = 0x00E29C2C; // Float
     uintptr_t Lap5 = 0x00E29C30; // Float
     uintptr_t LapTotal = 0x00E29C34; // Float
-    uintptr_t CurrentLap = 0x00E29C38; // Byte
+    uintptr_t Laps[5] { Lap1,Lap2,Lap3,Lap4,Lap5 }; // Lookup
+
 
 
     //uintptr_t Track = 0x00EA02B; // Byte
@@ -73,6 +83,97 @@ namespace Values
   //End
 
 };
+
+
+class Record
+{
+public:
+  struct DataPoint
+  {
+    friend std::ifstream& operator >> (std::ifstream& in, DataPoint &D) {
+      in >> D.Timer >> D.Completion;
+      in >> D.X >> D.Y >> D.Z;
+      in >> D.Yaw >> D.Pitch >> D.Roll;
+      return in;
+    }
+    friend std::ofstream& operator << (std::ofstream& in, DataPoint &D) {
+      in << D.Timer << " " << D.Completion << " ";
+      in << D.X << " " << D.Y << " " << D.Z << " ";
+      in << D.Yaw << " " << D.Pitch << " " << D.Roll << " ";
+      return in;
+    }
+
+
+    float Timer;
+    float Completion;
+    float X, Y, Z;
+    float Yaw, Pitch, Roll; //
+  };
+
+  Record(){}
+  Record(BYTE InputTrack, BYTE LapCount) { Track = InputTrack; Laps = LapCount; }
+
+  void addPoint(DataPoint D) {
+    Data.push_back(D);
+  }
+
+  void save() {
+    FinalTime = Data.back().Timer;
+
+    std::ofstream myfile;
+    myfile.open(Values::TrackNames[Track]+"/"+std::to_string(FinalTime)+".txt");
+    for (std::list<DataPoint>::iterator it = Data.begin(); it != Data.end(); ++it){
+      myfile << *it;
+    }
+    myfile.close();
+  }
+
+  void load() {
+    Data.clear();
+
+    std::ifstream myfile;
+    myfile.open(getBestTime());
+    while(myfile && myfile.peek() != EOF) {
+      DataPoint* D = new DataPoint();
+      myfile >> *D;
+      Data.push_back(*D);
+    }
+    myfile.close();
+  }
+
+  float getFinalTime() { return FinalTime; }
+
+  void print() {
+    for (std::list<DataPoint>::iterator it = Data.begin(); it != Data.end(); ++it){
+      std::cout << it->Timer << " | " << it->Completion << " | " << it->X << "," << it->Y << "," << it->Z << std::endl;
+    }
+  }
+
+private:
+  std::list<DataPoint> Data;
+  float FinalTime;
+  BYTE Track;
+  BYTE Laps;
+
+
+
+  std::string getBestTime() {
+    DIR *dir = opendir( (Values::TrackNames[Track]+"/").c_str() );
+    readdir(dir);readdir(dir);
+
+    std::string best = Values::TrackNames[Track]+"/"+readdir(dir)->d_name;
+
+    closedir(dir);
+    return best;
+  }
+
+};
+
+
+
+
+
+
 
 
 
