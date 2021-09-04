@@ -1,3 +1,6 @@
 [submodule "WinMem"]
 	path = WinMem
 	url = https://github.com/goofbrush/WinMem.git
+[submodule "UnixMem"]
+	path = UnixMem
+	url = https://github.com/goofbrush/UnixMem.git

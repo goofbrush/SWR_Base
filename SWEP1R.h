@@ -1,4 +1,11 @@
-#include "WinMem/Memory.h"
+#if defined(__linux__)
+  #include "UnixMem/Memory.h"
+#endif
+
+#if defined(_WIN32)
+  #include "WinMem/Memory.h"
+#endif
+
 #include "Record.h"
 
 #include <dirent.h>
@@ -127,7 +134,14 @@ protected:
   }
 
 private:
-  Memory mem = Memory("Episode I Racer", "SWEP1RCR.EXE");
+
+  #if defined(__linux__)
+    Memory mem = Memory("SWEP1RCR.EXE");
+  #endif
+  #if defined(_WIN32)
+    Memory mem = Memory("Episode I Racer", "SWEP1RCR.EXE");
+  #endif
+
 
   Record rec,play;
 
