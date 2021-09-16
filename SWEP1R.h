@@ -31,11 +31,8 @@ public:
   void start() {
 
     while(true) {
-      PodRacer = mem.readValueFromPointer<BYTE>(Values.RaceStuffPointer, true, Values.LapNum);
-      std::cout << static_cast<unsigned>(PodRacer) << std::endl;
 
       bool load = true;
-      int lastLap = 0;
 
       waitForCountdown(); // Blocks until the race coundown starts
 
